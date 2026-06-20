@@ -36,6 +36,13 @@ repo-first "talking avatar lip sync javascript" --limit 5
 
 No token is required for light use. Set `GITHUB_TOKEN` for higher API limits.
 
+Search local workspaces before GitHub when you may already have a suitable clone/template:
+
+```bash
+repo-first "telegram bot starter" --local ~/workspace --limit 8
+repo-first "agent dashboard" --local ~/workspace --no-github
+```
+
 ## Example
 
 ```bash

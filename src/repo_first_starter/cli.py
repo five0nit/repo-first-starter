@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ class Candidate:
     score: int
     fit: str
     risk: str
+    source: str = "github"
 
 
 def github_search(query: str, limit: int) -> list[dict]:
@@ -38,6 +40,82 @@ def github_search(query: str, limit: int) -> list[dict]:
     req = urllib.request.Request(url, headers=headers)
     with urllib.request.urlopen(req, timeout=30) as resp:
         return json.loads(resp.read().decode("utf-8")).get("items", [])
+
+
+SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", "dist", "build"}
+PROJECT_MARKERS = ("pyproject.toml", "package.json", "Cargo.toml", "go.mod", "README.md")
+
+
+def local_workspace_search(query: str, roots: list[str], limit: int) -> list[dict]:
+    """Return GitHub-shaped items for matching local project directories.
+
+    The limit is a scan cap, not the final output size; callers score and sort
+    local results with remote results before truncating the displayed list.
+    """
+    terms = [t.lower() for t in query.replace("-", " ").split() if len(t) > 2]
+    results: list[dict] = []
+    seen: set[Path] = set()
+    for root_s in roots:
+        root = Path(root_s).expanduser().resolve()
+        if not root.exists():
+            continue
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")]
+            path = Path(dirpath)
+            if path in seen:
+                continue
+            has_project_marker = any(marker in filenames for marker in PROJECT_MARKERS) or ".git" in dirnames
+            if not has_project_marker:
+                continue
+            text_bits = [path.name]
+            readme = path / "README.md"
+            description = "Local workspace project"
+            if readme.exists():
+                try:
+                    first_lines = readme.read_text(errors="ignore").splitlines()[:8]
+                    text_bits.extend(first_lines)
+                    description = next((line.strip("# ") for line in first_lines if line.strip()), description)
+                except OSError:
+                    pass
+            haystack = " ".join(text_bits).lower()
+            if terms and not any(term in haystack for term in terms):
+                continue
+            seen.add(path)
+            try:
+                updated = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat().replace("+00:00", "Z")
+            except OSError:
+                updated = ""
+            language = ""
+            if (path / "pyproject.toml").exists():
+                language = "Python"
+            elif (path / "package.json").exists():
+                language = "JavaScript"
+            elif (path / "Cargo.toml").exists():
+                language = "Rust"
+            elif (path / "go.mod").exists():
+                language = "Go"
+            license_name = "UNKNOWN"
+            for candidate in ("LICENSE", "LICENSE.md", "COPYING"):
+                if (path / candidate).exists():
+                    license_name = "LOCAL-CHECK"
+                    break
+            results.append({
+                "full_name": f"local/{path.name}",
+                "html_url": path.as_uri(),
+                "description": description,
+                "stargazers_count": 0,
+                "forks_count": 0,
+                "open_issues_count": 0,
+                "license": {"spdx_id": license_name},
+                "language": language,
+                "updated_at": updated,
+                "archived": False,
+                "homepage": None,
+                "source": "local",
+            })
+            if len(results) >= limit:
+                return results
+    return results
 
 
 def age_score(updated_at: str) -> int:
@@ -59,7 +137,7 @@ def score_item(item: dict, query_terms: list[str]) -> Candidate:
     functional = min(35, 10 + matched * 6)
 
     desc = (item.get("description") or "").lower()
-    local = 8
+    local = 12 if item.get("source") == "local" else 8
     if any(w in desc for w in ["local", "self-host", "offline", "browser", "cli", "library"]):
         local += 5
     if any(w in desc for w in ["api key", "cloud", "saas"]):
@@ -75,7 +153,7 @@ def score_item(item: dict, query_terms: list[str]) -> Candidate:
     integration = max(0, min(15, integration))
 
     lic = (item.get("license") or {}).get("spdx_id") or "UNKNOWN"
-    license_score = 10 if lic in PREFERRED_LICENSES else (4 if lic != "UNKNOWN" else 0)
+    license_score = 10 if lic in PREFERRED_LICENSES else (5 if lic == "LOCAL-CHECK" else (4 if lic != "UNKNOWN" else 0))
 
     stars = int(item.get("stargazers_count") or 0)
     quality = 2
@@ -88,6 +166,7 @@ def score_item(item: dict, query_terms: list[str]) -> Candidate:
     score = functional + local + maintenance + integration + license_score + quality
     risk_parts = []
     if lic == "UNKNOWN": risk_parts.append("license unclear")
+    if lic == "LOCAL-CHECK": risk_parts.append("inspect local license")
     if item.get("archived"): risk_parts.append("archived")
     if int(item.get("open_issues_count") or 0) > max(50, stars // 2): risk_parts.append("many open issues")
     if not risk_parts: risk_parts.append("requires code inspection")
@@ -107,17 +186,24 @@ def score_item(item: dict, query_terms: list[str]) -> Candidate:
         score=int(score),
         fit=fit,
         risk=", ".join(risk_parts),
+        source=item.get("source", "github"),
     )
 
 
 def markdown(candidates: list[Candidate], query: str) -> str:
-    lines = [f"## Repo/tool candidates for: `{query}`", "", "| Score | Candidate | Stars | License | What it is | Fit | Risk |", "|---:|---|---:|---|---|---|---|"]
+    lines = [f"## Repo/tool candidates for: `{query}`", "", "| Score | Source | Candidate | Stars | License | What it is | Fit | Risk |", "|---:|---|---|---:|---|---|---|---|"]
     for c in candidates:
         desc = c.description.replace("|", "-")[:110]
-        lines.append(f"| {c.score} | [{c.full_name}]({c.url}) | {c.stars} | {c.license} | {desc} | {c.fit} | {c.risk} |")
+        lines.append(f"| {c.score} | {c.source} | [{c.full_name}]({c.url}) | {c.stars} | {c.license} | {desc} | {c.fit} | {c.risk} |")
     if candidates:
         best = candidates[0]
-        lines += ["", f"**Choice:** [{best.full_name}]({best.url})", "**Decision:** inspect/clone as base if license, runtime, and seams check out.", f"**Next command:** `git clone {best.url}`"]
+        if best.source == "local":
+            next_command = f"cd {best.url.removeprefix('file://')}"
+            decision = "inspect local workspace as base if license, runtime, and seams check out."
+        else:
+            next_command = f"git clone {best.url}"
+            decision = "inspect/clone as base if license, runtime, and seams check out."
+        lines += ["", f"**Choice:** [{best.full_name}]({best.url})", f"**Decision:** {decision}", f"**Next command:** `{next_command}`"]
     return "\n".join(lines)
 
 
@@ -126,16 +212,22 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("query", help="GitHub search query / project target")
     ap.add_argument("--limit", type=int, default=8, help="number of candidates to fetch")
     ap.add_argument("--json", action="store_true", help="emit JSON instead of Markdown")
+    ap.add_argument("--local", action="append", default=[], metavar="PATH", help="search a local workspace path before GitHub; can be repeated")
+    ap.add_argument("--no-github", action="store_true", help="only search local paths supplied with --local")
     ap.add_argument("--markdown", action="store_true", help="emit Markdown (default)")
     args = ap.parse_args(argv)
 
     terms = [t.lower() for t in args.query.replace('-', ' ').split() if len(t) > 2]
-    try:
-        items = github_search(args.query, args.limit)
-    except Exception as e:
-        print(f"repo-first: GitHub search failed: {e}", file=sys.stderr)
-        return 2
-    candidates = sorted((score_item(i, terms) for i in items), key=lambda c: c.score, reverse=True)
+    items = local_workspace_search(args.query, args.local, max(args.limit * 25, 100)) if args.local else []
+    if not args.no_github:
+        try:
+            items.extend(github_search(args.query, args.limit))
+        except Exception as e:
+            if not items:
+                print(f"repo-first: GitHub search failed: {e}", file=sys.stderr)
+                return 2
+            print(f"repo-first: GitHub search failed; showing local results only: {e}", file=sys.stderr)
+    candidates = sorted((score_item(i, terms) for i in items), key=lambda c: c.score, reverse=True)[:args.limit]
     if args.json:
         print(json.dumps([c.__dict__ for c in candidates], indent=2))
     else:

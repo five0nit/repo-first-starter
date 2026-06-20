@@ -1,4 +1,4 @@
-from repo_first_starter.cli import score_item
+from repo_first_starter.cli import local_workspace_search, markdown, score_item
 
 
 def test_score_prefers_matching_licensed_recent_repo():
@@ -38,3 +38,42 @@ def test_unknown_license_is_flagged():
     c = score_item(item, ["repo", "analyzer"])
     assert c.license == "UNKNOWN"
     assert "license unclear" in c.risk
+
+
+def test_local_workspace_search_finds_matching_project(tmp_path):
+    project = tmp_path / "starter-demo"
+    project.mkdir()
+    (project / "pyproject.toml").write_text("[project]\nname = 'starter-demo'\n")
+    (project / "README.md").write_text("# Starter Demo\n\nLocal starter repo for agents.\n")
+    (project / "LICENSE").write_text("MIT\n")
+
+    items = local_workspace_search("starter agents", [str(tmp_path)], limit=5)
+
+    assert len(items) == 1
+    assert items[0]["source"] == "local"
+    assert items[0]["full_name"] == "local/starter-demo"
+    assert items[0]["language"] == "Python"
+
+
+def test_markdown_uses_cd_for_local_choice():
+    local_candidate = score_item(
+        {
+            "full_name": "local/starter-demo",
+            "html_url": "file:///tmp/starter-demo",
+            "description": "Local starter repo",
+            "stargazers_count": 0,
+            "forks_count": 0,
+            "open_issues_count": 0,
+            "license": {"spdx_id": "LOCAL-CHECK"},
+            "language": "Python",
+            "updated_at": "2026-01-01T00:00:00Z",
+            "archived": False,
+            "source": "local",
+        },
+        ["starter"],
+    )
+
+    out = markdown([local_candidate], "starter")
+
+    assert "| Source |" in out
+    assert "**Next command:** `cd /tmp/starter-demo`" in out

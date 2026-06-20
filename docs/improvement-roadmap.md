@@ -11,8 +11,8 @@ Useful next improvements for people who download this repo:
 ## Search sources
 
 - Add npm, PyPI, crates.io, Docker Hub, Hugging Face, and GitLab search providers.
-- Add local workspace search before web search to reuse existing clones.
-- Cache GitHub API responses for repeat queries.
+- [x] Add local workspace search before web search to reuse existing clones (`--local PATH`, `--no-github`).
+- [ ] Cache GitHub API responses for repeat queries.
 
 ## Scoring quality
 
