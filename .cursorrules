@@ -1,0 +1,2 @@
+Repo-first rule: before building new features, search candidate repos/tools, score them, and choose a base when feasible.
+Keep runtime dependencies minimal. Run tests before finalizing.

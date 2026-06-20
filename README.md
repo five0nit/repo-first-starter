@@ -67,3 +67,33 @@ Output shape:
 ## License
 
 MIT
+
+
+## Agent compatibility
+
+This repo is designed to be agent-portable:
+
+| Agent/runtime | Status | Files |
+|---|---|---|
+| Hermes Agent | Compatible | `skills/repo-first-base-selection/SKILL.md`, `scripts/install-skill.sh` |
+| OpenClaw | Compatible with SKILL.md-style skill folders | `skills/repo-first-base-selection/SKILL.md`, `scripts/install-skill.sh` |
+| Codex / OpenAI-style coding agents | Compatible instructions | `AGENTS.md` |
+| Claude Code | Compatible instructions | `CLAUDE.md` |
+| Cursor | Compatible instructions | `.cursorrules` |
+
+Install the skill locally:
+
+```bash
+scripts/install-skill.sh              # Hermes + OpenClaw common locations
+scripts/install-skill.sh --hermes-only
+scripts/install-skill.sh --openclaw-only
+```
+
+See [`docs/compatibility.md`](docs/compatibility.md).
+
+## Recommended improvements for adopters
+
+- Tune scoring weights for your domain.
+- Add ecosystem providers beyond GitHub: npm, PyPI, Hugging Face, Docker Hub.
+- Add an MCP wrapper so agents can call repo-first as a structured tool.
+- Add CI and publish to PyPI or as a `gh` extension.
