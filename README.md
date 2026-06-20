@@ -14,16 +14,18 @@ AI agents often jump straight into writing custom code. That wastes time when a 
 
 Default rubric totals 100 points:
 
-| Component | Points |
-|---|---:|
-| Functional fit | 35 |
-| Local/control fit | 15 |
-| Maintenance/activity | 15 |
-| Integration simplicity | 15 |
-| License/shareability | 10 |
-| Quality/demo proof | 10 |
+| Component | Points | Signals |
+|---|---:|---|
+| Functional fit | 35 | Query terms in repo name, description, and language |
+| Local/control fit | 15 | Local/self-host/offline/browser/CLI/library signals; cloud/SaaS penalty |
+| Maintenance/activity | 15 | Recent update/push recency |
+| Integration simplicity | 15 | Practical implementation language, non-archived status |
+| License/shareability | 10 | Preferred SPDX licenses vs unknown/unclear license |
+| Adoption | 10 | Stars, forks, watchers/subscribers |
+| Developer history | 10 | Contributor count, fork activity, recent push, homepage/demo |
+| Issue-health penalty | -5 | Penalizes unusually high open issue count |
 
-The CLI estimates these from GitHub metadata and query matching. Humans/agents should adjust scores after code inspection.
+GitHub does not provide a repo-level “review score” like an app store. The CLI uses practical proxies: stars, forks, watchers, issue health, maintainer activity, contributor count, license clarity, and demo/homepage evidence. Use `--deep-github` to fetch contributor/watchers/push metadata for stronger ranking; it is slower and uses more GitHub API calls.
 
 ## Install / run locally
 
@@ -41,6 +43,7 @@ Search local workspaces before GitHub when you may already have a suitable clone
 ```bash
 repo-first "telegram bot starter" --local ~/workspace --limit 8
 repo-first "agent dashboard" --local ~/workspace --no-github
+repo-first "telegram bot starter" --deep-github --limit 5  # slower, stronger ranking signals
 ```
 
 ## Example
@@ -53,9 +56,9 @@ Output shape:
 
 ```markdown
 ## Repo/tool candidates
-| Score | Candidate | Stars | License | What it is | Fit | Risk |
-|---:|---|---:|---|---|---|---|
-| 87 | owner/repo | 1234 | MIT | ... | ... | ... |
+| Score | Source | Candidate | Stars | Forks | Devs | Issues | License | What it is | Fit | Risk |
+|---:|---|---|---:|---:|---:|---:|---|---|---|---|
+| 87 | github | owner/repo | 1234 | 120 | 25 | 8 | MIT | ... | ... | ... |
 
 **Choice:** owner/repo
 **Decision:** inspect/clone as base if license and seams check out.

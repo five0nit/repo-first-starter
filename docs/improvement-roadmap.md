@@ -19,6 +19,7 @@ Useful next improvements for people who download this repo:
 - Inspect candidate READMEs and LICENSE files for stronger scoring.
 - Penalize unmaintained repos more accurately with commit activity.
 - Add domain-specific scoring profiles, e.g. `--profile webapp`, `--profile ml`, `--profile cli`.
+- Add cached deep ranking metadata so contributor/watchers/history signals do not require repeated GitHub API calls.
 - Add explicit security/licensing red flags.
 
 ## Output modes

@@ -40,6 +40,35 @@ def test_unknown_license_is_flagged():
     assert "license unclear" in c.risk
 
 
+def test_score_uses_forks_contributors_and_issue_health():
+    healthy = {
+        "full_name": "owner/healthy-bot",
+        "html_url": "https://github.com/owner/healthy-bot",
+        "description": "Telegram bot starter",
+        "stargazers_count": 500,
+        "forks_count": 80,
+        "subscribers_count": 60,
+        "contributors_count": 12,
+        "open_issues_count": 8,
+        "license": {"spdx_id": "MIT"},
+        "language": "TypeScript",
+        "updated_at": "2026-01-01T00:00:00Z",
+        "pushed_at": "2026-01-01T00:00:00Z",
+        "archived": False,
+        "homepage": "https://example.com",
+    }
+    noisy = {**healthy, "forks_count": 0, "subscribers_count": 0, "contributors_count": 0, "open_issues_count": 400, "homepage": None}
+
+    healthy_score = score_item(healthy, ["telegram", "bot", "starter"])
+    noisy_score = score_item(noisy, ["telegram", "bot", "starter"])
+
+    assert healthy_score.forks == 80
+    assert healthy_score.watchers == 60
+    assert healthy_score.contributors == 12
+    assert healthy_score.score > noisy_score.score
+    assert "many open issues" in noisy_score.risk
+
+
 def test_local_workspace_search_finds_matching_project(tmp_path):
     project = tmp_path / "starter-demo"
     project.mkdir()

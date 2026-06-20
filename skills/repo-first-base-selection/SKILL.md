@@ -24,8 +24,9 @@ Do not jump straight into bespoke code because it feels faster. Repository disco
 
 2. **Search candidates**
    - Search GitHub and/or known package ecosystems.
+   - Search scoped local workspaces when an existing clone/template may already exist.
    - Include repos the user names, but do not stop there if comparison is useful.
-   - Prefer active, licensed, well-starred, directly relevant projects.
+   - Prefer active, licensed, well-starred, directly relevant projects with healthy issue ratios and maintainer/contributor history.
 
 3. **Return a scored candidate list before choosing**
    Include at least:
@@ -33,6 +34,8 @@ Do not jump straight into bespoke code because it feels faster. Repository disco
    - **Repo/tool name + URL**
    - **Description**
    - **License/posture** if visible
+   - **Stars / forks / issue health** if available
+   - **Developer/contributor history** if deep metadata is available
    - **Why it fits**
    - **Key risk**
 
@@ -60,6 +63,8 @@ If this repo is installed, run:
 
 ```bash
 repo-first "your project target" --limit 8
+repo-first "your project target" --local ~/workspace --limit 8
+repo-first "your project target" --deep-github --limit 5  # slower, stronger ranking metadata
 ```
 
 Or without installing:
@@ -72,9 +77,9 @@ python -m repo_first_starter.cli "your project target" --limit 8
 
 ```markdown
 ## Repo/tool candidates
-| Score | Candidate | What it is | Fit | Risk |
-|---:|---|---|---|---|
-| 92 | owner/repo | ... | ... | ... |
+| Score | Source | Candidate | Stars | Forks | Devs | Issues | What it is | Fit | Risk |
+|---:|---|---|---:|---:|---:|---:|---|---|---|
+| 92 | github | owner/repo | 1200 | 140 | 22 | 8 | ... | ... | ... |
 
 **Choice:** owner/repo
 **Decision:** clone as base / selective fork / library / inspiration / clean build

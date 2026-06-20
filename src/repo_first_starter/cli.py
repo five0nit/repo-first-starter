@@ -19,6 +19,8 @@ class Candidate:
     description: str
     stars: int
     forks: int
+    watchers: int
+    contributors: int
     open_issues: int
     license: str
     language: str
@@ -30,16 +32,53 @@ class Candidate:
     source: str = "github"
 
 
-def github_search(query: str, limit: int) -> list[dict]:
-    q = urllib.parse.quote(query)
-    url = f"https://api.github.com/search/repositories?q={q}&sort=stars&order=desc&per_page={limit}"
-    headers = {"User-Agent": "repo-first-starter"}
+def github_headers() -> dict[str, str]:
+    headers = {"User-Agent": "repo-first-starter", "Accept": "application/vnd.github+json"}
     token = os.environ.get("GITHUB_TOKEN")
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    req = urllib.request.Request(url, headers=headers)
+    return headers
+
+
+def github_get_json(url: str) -> object:
+    req = urllib.request.Request(url, headers=github_headers())
     with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read().decode("utf-8")).get("items", [])
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def github_search(query: str, limit: int) -> list[dict]:
+    q = urllib.parse.quote(query)
+    url = f"https://api.github.com/search/repositories?q={q}&sort=stars&order=desc&per_page={limit}"
+    data = github_get_json(url)
+    return data.get("items", []) if isinstance(data, dict) else []
+
+
+def enrich_github_items(items: list[dict], deep: bool = False) -> list[dict]:
+    """Optionally add slower quality signals not returned by GitHub search."""
+    if not deep:
+        return items
+    enriched = []
+    for item in items:
+        merged = dict(item)
+        try:
+            details = github_get_json(item.get("url", ""))
+            if isinstance(details, dict):
+                for key in ("subscribers_count", "network_count", "pushed_at", "created_at", "topics"):
+                    if key in details:
+                        merged[key] = details[key]
+        except Exception as e:
+            merged["deep_error"] = str(e)
+        try:
+            contributors_url = (item.get("contributors_url") or "").split("{", 1)[0]
+            if contributors_url:
+                contributors = github_get_json(f"{contributors_url}?per_page=100")
+                if isinstance(contributors, list):
+                    merged["contributors_count"] = len(contributors)
+                    merged["top_contributor_commits"] = sum(int(c.get("contributions") or 0) for c in contributors[:10])
+        except Exception as e:
+            merged["contributors_error"] = str(e)
+        enriched.append(merged)
+    return enriched
 
 
 SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".pytest_cache", "dist", "build"}
@@ -105,6 +144,8 @@ def local_workspace_search(query: str, roots: list[str], limit: int) -> list[dic
                 "description": description,
                 "stargazers_count": 0,
                 "forks_count": 0,
+                "subscribers_count": 0,
+                "contributors_count": 0,
                 "open_issues_count": 0,
                 "license": {"spdx_id": license_name},
                 "language": language,
@@ -156,19 +197,49 @@ def score_item(item: dict, query_terms: list[str]) -> Candidate:
     license_score = 10 if lic in PREFERRED_LICENSES else (5 if lic == "LOCAL-CHECK" else (4 if lic != "UNKNOWN" else 0))
 
     stars = int(item.get("stargazers_count") or 0)
-    quality = 2
-    if stars >= 1000: quality += 6
-    elif stars >= 100: quality += 4
-    elif stars >= 10: quality += 2
-    if item.get("homepage"): quality += 2
-    quality = min(10, quality)
+    forks = int(item.get("forks_count") or item.get("network_count") or 0)
+    watchers = int(item.get("subscribers_count") or item.get("watchers_count") or 0)
+    contributors = int(item.get("contributors_count") or 0)
+    open_issues = int(item.get("open_issues_count") or 0)
 
-    score = functional + local + maintenance + integration + license_score + quality
+    adoption = 0
+    if stars >= 1000: adoption += 6
+    elif stars >= 100: adoption += 5
+    elif stars >= 10: adoption += 3
+    elif stars > 0: adoption += 1
+    if forks >= 100: adoption += 3
+    elif forks >= 20: adoption += 2
+    elif forks >= 3: adoption += 1
+    if watchers >= 50: adoption += 1
+    adoption = min(10, adoption)
+
+    developer_history = 0
+    if contributors >= 20: developer_history += 4
+    elif contributors >= 5: developer_history += 3
+    elif contributors >= 2: developer_history += 2
+    elif contributors == 1: developer_history += 1
+    if forks >= 20: developer_history += 2
+    if item.get("pushed_at") and age_score(item.get("pushed_at", "")) >= 12:
+        developer_history += 2
+    if item.get("homepage"): developer_history += 2
+    developer_history = min(10, developer_history)
+
+    issue_penalty = 0
+    if open_issues > max(50, stars // 2):
+        issue_penalty = 5
+    elif open_issues > max(20, stars // 4):
+        issue_penalty = 2
+
+    score = functional + local + maintenance + integration + license_score + adoption + developer_history - issue_penalty
+    score = max(0, min(100, score))
     risk_parts = []
     if lic == "UNKNOWN": risk_parts.append("license unclear")
     if lic == "LOCAL-CHECK": risk_parts.append("inspect local license")
     if item.get("archived"): risk_parts.append("archived")
-    if int(item.get("open_issues_count") or 0) > max(50, stars // 2): risk_parts.append("many open issues")
+    if issue_penalty >= 5: risk_parts.append("many open issues")
+    elif issue_penalty: risk_parts.append("elevated open issues")
+    if item.get("deep_error"): risk_parts.append("deep repo metadata unavailable")
+    if item.get("contributors_error"): risk_parts.append("contributor metadata unavailable")
     if not risk_parts: risk_parts.append("requires code inspection")
 
     fit = "directly relevant" if functional >= 28 else ("partial fit" if functional >= 20 else "weak/needs inspection")
@@ -177,8 +248,10 @@ def score_item(item: dict, query_terms: list[str]) -> Candidate:
         url=item.get("html_url", ""),
         description=item.get("description") or "",
         stars=stars,
-        forks=int(item.get("forks_count") or 0),
-        open_issues=int(item.get("open_issues_count") or 0),
+        forks=forks,
+        watchers=watchers,
+        contributors=contributors,
+        open_issues=open_issues,
         license=lic,
         language=item.get("language") or "",
         updated_at=item.get("updated_at", ""),
@@ -191,10 +264,10 @@ def score_item(item: dict, query_terms: list[str]) -> Candidate:
 
 
 def markdown(candidates: list[Candidate], query: str) -> str:
-    lines = [f"## Repo/tool candidates for: `{query}`", "", "| Score | Source | Candidate | Stars | License | What it is | Fit | Risk |", "|---:|---|---|---:|---|---|---|---|"]
+    lines = [f"## Repo/tool candidates for: `{query}`", "", "| Score | Source | Candidate | Stars | Forks | Devs | Issues | License | What it is | Fit | Risk |", "|---:|---|---|---:|---:|---:|---:|---|---|---|---|"]
     for c in candidates:
         desc = c.description.replace("|", "-")[:110]
-        lines.append(f"| {c.score} | {c.source} | [{c.full_name}]({c.url}) | {c.stars} | {c.license} | {desc} | {c.fit} | {c.risk} |")
+        lines.append(f"| {c.score} | {c.source} | [{c.full_name}]({c.url}) | {c.stars} | {c.forks} | {c.contributors} | {c.open_issues} | {c.license} | {desc} | {c.fit} | {c.risk} |")
     if candidates:
         best = candidates[0]
         if best.source == "local":
@@ -214,6 +287,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--json", action="store_true", help="emit JSON instead of Markdown")
     ap.add_argument("--local", action="append", default=[], metavar="PATH", help="search a local workspace path before GitHub; can be repeated")
     ap.add_argument("--no-github", action="store_true", help="only search local paths supplied with --local")
+    ap.add_argument("--deep-github", action="store_true", help="fetch extra GitHub repo/contributor metadata for stronger ranking; slower and uses more API calls")
     ap.add_argument("--markdown", action="store_true", help="emit Markdown (default)")
     args = ap.parse_args(argv)
 
@@ -221,7 +295,7 @@ def main(argv: list[str] | None = None) -> int:
     items = local_workspace_search(args.query, args.local, max(args.limit * 25, 100)) if args.local else []
     if not args.no_github:
         try:
-            items.extend(github_search(args.query, args.limit))
+            items.extend(enrich_github_items(github_search(args.query, args.limit), args.deep_github))
         except Exception as e:
             if not items:
                 print(f"repo-first: GitHub search failed: {e}", file=sys.stderr)
