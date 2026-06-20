@@ -101,6 +101,10 @@ scripts/install-skill.sh --openclaw-only
 
 See [`docs/compatibility.md`](docs/compatibility.md).
 
+## Latest ranking report
+
+See [`docs/ranking-report.md`](docs/ranking-report.md) for the current scoring signals, deep GitHub ranking mode, and the latest live verification run.
+
 ## Recommended improvements for adopters
 
 - Tune scoring weights for your domain.
