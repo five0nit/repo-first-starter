@@ -1,10 +1,12 @@
 # Repo First Starter
 
-A small, shareable CLI/template that enforces Mike's **repo-first base-selection rule**:
+A small, shareable CLI/template that enforces Mike's **repo-first base-selection rule** plus an **agent-code entropy gate**:
 
 > Before building from scratch, search available repositories/tools, score candidates, choose the best base, then clone/start from that base when feasible.
+>
+> After selecting a base, avoid agent-written changes that increase future reasoning cost. Working code is not enough; every AI-generated change should reduce or preserve system entropy.
 
-This project is deliberately lightweight: one Python CLI, no required third-party runtime dependencies, GitHub API search, a transparent scoring rubric, and Markdown output that can be pasted into agent chats or project docs.
+This project is deliberately lightweight: one Python CLI, no required third-party runtime dependencies, GitHub API search, trusted curated-list discovery, an optional maintainability/entropy gate, a transparent scoring rubric, and Markdown output that can be pasted into agent chats or project docs.
 
 ## Why
 
@@ -38,13 +40,33 @@ repo-first "talking avatar lip sync javascript" --limit 5
 
 No token is required for light use. Set `GITHUB_TOKEN` for higher API limits.
 
+By default, the CLI also searches two high-signal curated lists before final ranking:
+
+- [`sindresorhus/awesome`](https://github.com/sindresorhus/awesome) for broad language/framework/tooling indexes.
+- [`trimstray/the-book-of-secret-knowledge`](https://github.com/trimstray/the-book-of-secret-knowledge) for CLI, ops, security, networking, and practical engineering tools.
+
+Curated-list hits are treated as discovery leads, not automatic winners: they receive a modest ranking boost but are flagged with `curated list hit; inspect upstream health/license`. Use `--no-curated` to disable this path for fully direct GitHub/local-only searches.
+
 Search local workspaces before GitHub when you may already have a suitable clone/template:
 
 ```bash
 repo-first "telegram bot starter" --local ~/workspace --limit 8
 repo-first "agent dashboard" --local ~/workspace --no-github
 repo-first "telegram bot starter" --deep-github --limit 5  # slower, stronger ranking signals
+repo-first "marketplace messaging" --entropy-gate      # append agent-code maintainability gate
 ```
+
+## Agent-code entropy gate
+
+Repo-first should not stop at "it works." After selecting a base and implementing changes, use the entropy gate to avoid agent-written code that only makes sense inside the original chat session.
+
+The gate checks for hidden truth, duplicate business logic, pattern drift, unjustified abstractions, pointless indirection, context bombs, clever runtime magic, silent failure, undebuggable success, temporal coupling, retry-unsafe operations, test theatre, dependency inflation, config masquerading as logic, premature distribution, bolted-on security, orphaned code, and local correctness that breaks global coherence.
+
+```bash
+repo-first "payments workflow starter" --entropy-gate
+```
+
+See [`docs/agent-code-entropy-gate.md`](docs/agent-code-entropy-gate.md).
 
 ## Example
 
@@ -72,7 +94,8 @@ Output shape:
 4. Choose base: direct fork / selective fork / use as library / inspiration / clean build.
 5. Clone/inspect the chosen repo before implementation claims.
 6. Start from the base when feasible.
-7. Report real install/test/demo receipts.
+7. Apply the agent-code entropy gate: reject hidden truth, duplicated business logic, pattern drift, unjustified abstraction, weak observability, retry-unsafe operations, test theatre, dependency inflation, and orphaned code.
+8. Report real install/test/demo receipts.
 
 ## License
 

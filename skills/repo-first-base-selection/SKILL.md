@@ -24,6 +24,9 @@ Do not jump straight into bespoke code because it feels faster. Repository disco
 
 2. **Search candidates**
    - Search GitHub and/or known package ecosystems.
+   - Search the trusted curated lists that often tighten broad tool discovery:
+     - `https://github.com/sindresorhus/awesome` for broad language/framework/tooling indexes.
+     - `https://github.com/trimstray/the-book-of-secret-knowledge` for CLI, ops, security, networking, and practical engineering tools.
    - Search scoped local workspaces when an existing clone/template may already exist.
    - Include repos the user names, but do not stop there if comparison is useful.
    - Prefer active, licensed, well-starred, directly relevant projects with healthy issue ratios and maintainer/contributor history.
@@ -53,7 +56,13 @@ Do not jump straight into bespoke code because it feels faster. Repository disco
    - Record upstream/source and active branch.
    - Keep vendor/reference repos clearly labeled.
 
-7. **Verify with receipts**
+7. **Apply the agent-code entropy gate**
+   - Working code is not enough. Avoid changes that increase future reasoning cost.
+   - The codebase must explain itself after the agent, prompt, and conversation history are gone.
+   - Reject or revise implementations that introduce hidden truth, duplicate business logic, pattern drift, unjustified abstraction, pointless indirection, context bombs, clever runtime magic, silent failure, undebuggable success, hidden temporal coupling, retry-unsafe operations, test theatre, dependency inflation, config-as-logic, premature distribution, bolted-on security, orphaned code, or local correctness that breaks global coherence.
+   - Ask: would another agent understand and safely extend this without the original conversation?
+
+8. **Verify with receipts**
    - Run install/test/demo commands where practical.
    - Report real outputs and blockers.
 
@@ -65,6 +74,7 @@ If this repo is installed, run:
 repo-first "your project target" --limit 8
 repo-first "your project target" --local ~/workspace --limit 8
 repo-first "your project target" --deep-github --limit 5  # slower, stronger ranking metadata
+repo-first "your project target" --entropy-gate          # append maintainability gate
 ```
 
 Or without installing:

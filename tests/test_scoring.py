@@ -1,4 +1,4 @@
-from repo_first_starter.cli import local_workspace_search, markdown, score_item
+from repo_first_starter.cli import curated_list_search, entropy_gate_markdown, local_workspace_search, markdown, score_item
 
 
 def test_score_prefers_matching_licensed_recent_repo():
@@ -106,3 +106,99 @@ def test_markdown_uses_cd_for_local_choice():
 
     assert "| Source |" in out
     assert "**Next command:** `cd /tmp/starter-demo`" in out
+
+
+def test_curated_list_search_extracts_matching_links(monkeypatch):
+    sample = """
+# CLI Tools
+- [ripgrep](https://github.com/BurntSushi/ripgrep) - fast recursive grep CLI tool
+- [not relevant](https://example.com/nope) - drawing app
+"""
+
+    monkeypatch.setattr("repo_first_starter.cli.fetch_text", lambda url: sample)
+
+    items = curated_list_search("grep cli", limit=3)
+
+    assert any(item["full_name"] == "BurntSushi/ripgrep" for item in items)
+    assert all(item["source"].startswith("curated:") for item in items)
+
+
+def test_curated_hits_get_useful_but_cautious_score():
+    item = {
+        "full_name": "BurntSushi/ripgrep",
+        "html_url": "https://github.com/BurntSushi/ripgrep",
+        "description": "fast recursive grep CLI tool [section: CLI Tools]",
+        "stargazers_count": 0,
+        "forks_count": 0,
+        "open_issues_count": 0,
+        "license": {"spdx_id": "UNKNOWN"},
+        "language": "",
+        "updated_at": "",
+        "archived": False,
+        "homepage": "https://github.com/sindresorhus/awesome",
+        "source": "curated:awesome",
+        "curated_matches": 2,
+    }
+
+    c = score_item(item, ["grep", "cli"])
+
+    assert c.score >= 50
+    assert "curated list hit" in c.risk
+    assert "license unclear" in c.risk
+
+
+def test_personal_config_repos_are_penalized_for_non_dotfile_queries():
+    config = {
+        "full_name": "owner/.config",
+        "html_url": "https://github.com/owner/.config",
+        "description": "GNU Bash shell features CLI tools generated config",
+        "stargazers_count": 500,
+        "forks_count": 90,
+        "open_issues_count": 0,
+        "license": {"spdx_id": "MIT"},
+        "language": "Shell",
+        "updated_at": "2026-01-01T00:00:00Z",
+        "archived": False,
+    }
+
+    c = score_item(config, ["gnu", "bash", "shell", "features", "cli", "tools"])
+
+    assert c.score < 80
+    assert "personal config/dotfiles repo" in c.risk
+
+
+def test_markdown_does_not_git_clone_non_github_urls():
+    candidate = score_item(
+        {
+            "full_name": "GNU Bash",
+            "html_url": "https://www.gnu.org/software/bash/",
+            "description": "GNU Bash shell reference",
+            "stargazers_count": 0,
+            "forks_count": 0,
+            "open_issues_count": 0,
+            "license": {"spdx_id": "UNKNOWN"},
+            "language": "",
+            "updated_at": "",
+            "archived": False,
+            "homepage": "https://github.com/trimstray/the-book-of-secret-knowledge",
+            "source": "curated:secret-knowledge",
+            "curated_matches": 3,
+        },
+        ["gnu", "bash", "shell"],
+    )
+
+    out = markdown([candidate], "GNU Bash shell")
+
+    assert "git clone https://www.gnu.org/software/bash/" not in out
+    assert "curl -L https://www.gnu.org/software/bash/" in out
+
+
+def test_entropy_gate_markdown_includes_prime_directive_and_core_gates():
+    out = entropy_gate_markdown()
+
+    assert "Agent code entropy gate" in out
+    assert "avoid creating systems that only make sense inside the chat session" in out
+    assert "Hidden truth" in out
+    assert "Duplicate business logic" in out
+    assert "Global coherence" in out
+    assert "working code is not enough" in out
